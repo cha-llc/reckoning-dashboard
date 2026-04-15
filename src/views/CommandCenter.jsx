@@ -78,10 +78,13 @@ function BudgetAnalytics() {
     </div>
   )
 
-  // Determine if data is real: real data exists when there are actual
-  // meaningful revenue entries (more than seed/test rows) or personal transactions
-  const hasRealData = data && (data.totalRev > 0 || data.totalExp > 0)
-  const isSeeded = data && data.totalRev > 0 && data.totalRev < 50 && data.months.length <= 1
+  // SEED DATA GUARD — the current Supabase budget tables contain only
+  // test/seed entries ($14.97 revenue, $592.83 expenses). None of it is real.
+  // Flip this to false only after real financial data has been entered
+  // in the Budget Manager app and the seed rows have been removed.
+  const SEED_DATA_ONLY = true
+
+  const hasRealData = !SEED_DATA_ONLY && data && (data.months.length > 0)
 
   return (
     <div className="card col-span-2">
@@ -106,8 +109,8 @@ function BudgetAnalytics() {
         </button>
       </div>
 
-      {/* Empty state — no real data entered yet */}
-      {(!hasRealData || isSeeded) ? (
+      {/* Empty state — shown until real data exists and SEED_DATA_ONLY is set to false */}
+      {!hasRealData ? (
         <div style={{
           background: 'var(--navy3)', border: '1px dashed var(--border2)',
           borderRadius: 10, padding: '28px 20px', textAlign: 'center'
