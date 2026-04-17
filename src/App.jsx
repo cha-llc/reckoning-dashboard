@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import AuthGuard from './components/AuthGuard.jsx'
 import Topbar from './components/Topbar.jsx'
 import Sidebar from './components/Sidebar.jsx'
 import CommandCenter from './views/CommandCenter.jsx'
@@ -22,12 +23,14 @@ const VIEWS = {
 export default function App() {
   const [active, setActive] = useState('command')
   return (
-    <div className="app-shell">
-      <Topbar />
-      <Sidebar active={active} setActive={setActive} />
-      <main className="main-content">
-        {VIEWS[active] || VIEWS.command}
-      </main>
-    </div>
+    <AuthGuard>
+      <div className="app-shell">
+        <Topbar />
+        <Sidebar active={active} setActive={setActive} />
+        <main className="main-content">
+          {VIEWS[active] || VIEWS.command}
+        </main>
+      </div>
+    </AuthGuard>
   )
 }
