@@ -1,20 +1,18 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, CartesianGrid, LineChart, Line } from 'recharts'
 
-// ── Static seed data (Apr 17 snapshot from Socialblu MCP) ─────────────────
-// The view fetches fresh data via the Anthropic API on load and on refresh.
-// If the AI fetch fails, these values are shown as the fallback.
-
+// ── Seed snapshot (Apr 17 2026, from live Socialblu MCP pull) ─────────────
 const SEED = {
   fetchedAt: '2026-04-17T19:25:00Z',
+  isLive: false,
   accounts: [
-    { id: 165296, name: 'TikTok',    icon: '🎵', color: '#C9A84C', followers: 2439,  likes: 11604, videos: 941, following: 2277 },
-    { id: 165297, name: 'Instagram', icon: '📸', color: '#C1121F', followers: 113,   likes: null,  videos: null },
-    { id: 165298, name: 'YouTube',   icon: '▶️', color: '#2A9D8F', followers: 69,    views: 39780, videos: 323 },
-    { id: 177489, name: 'Pinterest', icon: '📌', color: '#9B5DE5', followers: 0,     monthlyViews: 218 },
-    { id: 177779, name: 'Reddit',    icon: '🔴', color: '#378ADD', followers: null },
-    { id: 177890, name: 'X/Twitter', icon: '✖',  color: '#639922', followers: 399 },
-    { id: 177891, name: 'LinkedIn',  icon: '💼', color: '#BA7517', followers: null },
+    { id:165296, name:'TikTok',    icon:'🎵', color:'#C9A84C', followers:2439,  likes:11604, videos:941,  following:2277 },
+    { id:165297, name:'Instagram', icon:'📸', color:'#C1121F', followers:113 },
+    { id:165298, name:'YouTube',   icon:'▶️', color:'#2A9D8F', followers:69,    views:39780, videos:323 },
+    { id:177489, name:'Pinterest', icon:'📌', color:'#9B5DE5', monthlyViews:218 },
+    { id:177779, name:'Reddit',    icon:'🔴', color:'#378ADD' },
+    { id:177890, name:'X/Twitter', icon:'✖',  color:'#639922', followers:399 },
+    { id:177891, name:'LinkedIn',  icon:'💼', color:'#BA7517' },
   ],
   tiktokDailyLikes: [
     {date:'Apr 2',likes:8},{date:'Apr 3',likes:14},{date:'Apr 4',likes:7},
@@ -37,11 +35,10 @@ const SEED = {
   ],
   topPosts: [
     { platform:'Instagram', type:'image', content:'I healed by showing up, not shutting down. Discipline gave me somewhere to put the pain.', engagement:19, date:'Apr 16', url:'https://www.instagram.com/p/DXLF6XxlIw5/' },
-    { platform:'Instagram', type:'image', content:'I stopped expecting people to keep up. Not everyone is coming with you. That\'s direction.', engagement:10, date:'Apr 15', url:'https://www.instagram.com/p/DXIhH9NlOFE/' },
-    { platform:'Instagram', type:'image', content:"I don't explain my boundaries twice. The first time is clarity.", engagement:4, date:'Apr 15', url:'https://www.instagram.com/p/DXKBSR4lPE7/' },
-    { platform:'LinkedIn',  type:'text',  content:'The system isn\'t broken. You just never had one. BrandPulse ($47) — the brand audit you\'ve been putting off.', engagement:2, date:'Apr 15', url:'https://www.linkedin.com/feed/update/urn:li:share:7450196308251996160' },
-    { platform:'Instagram', type:'video', content:'You didn\'t lose yourself. You negotiated yourself away. One compromise at a time.', engagement:1, date:'Apr 16', url:'https://www.instagram.com/reel/DXLoT8fEx-g/' },
-    { platform:'X/Twitter', type:'text',  content:'I healed by showing up, not shutting down. Discipline didn\'t replace the pain…', engagement:1, date:'Apr 16', url:'https://twitter.com/170368098/status/2044581555973058950' },
+    { platform:'Instagram', type:'image', content:"I stopped expecting people to keep up. Not everyone is coming with you. That's direction.", engagement:10, date:'Apr 15', url:'https://www.instagram.com/p/DXIhH9NlOFE/' },
+    { platform:'LinkedIn',  type:'text',  content:"The system isn't broken. You just never had one. BrandPulse ($47) — the brand audit you've been putting off.", engagement:2, date:'Apr 15', url:'https://www.linkedin.com/feed/update/urn:li:share:7450196308251996160' },
+    { platform:'Instagram', type:'video', content:"You didn't lose yourself. You negotiated yourself away. One compromise at a time.", engagement:1, date:'Apr 16', url:'https://www.instagram.com/reel/DXLoT8fEx-g/' },
+    { platform:'X/Twitter', type:'text',  content:'I healed by showing up, not shutting down. Discipline gave me somewhere to put the pain.', engagement:1, date:'Apr 16', url:'https://twitter.com/170368098/status/2044581555973058950' },
   ],
 }
 
@@ -50,7 +47,6 @@ const PLATFORM_COLORS = {
   Pinterest:'#9B5DE5', Reddit:'#378ADD', 'X/Twitter':'#639922', LinkedIn:'#BA7517',
 }
 
-// ── ms until next top of hour ─────────────────────────────────────────────
 function msUntilNextHour() {
   const now = new Date()
   const next = new Date(now)
@@ -61,48 +57,38 @@ function msUntilNextHour() {
 function AccountCard({ name, icon, color, followers, likes, views, videos, monthlyViews }) {
   return (
     <div style={{
-      background: 'var(--navy2)', border: '1px solid var(--border)', borderTop: `2px solid ${color}`,
-      borderRadius: 'var(--radius)', padding: '14px 16px',
+      background:'var(--navy2)', border:'1px solid var(--border)', borderTop:`2px solid ${color}`,
+      borderRadius:'var(--radius)', padding:'14px 16px',
     }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 15 }}>{icon}</span>
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--cream)' }}>{name}</span>
+      <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+          <span style={{ fontSize:15 }}>{icon}</span>
+          <span style={{ fontSize:13, fontWeight:600, color:'var(--cream)' }}>{name}</span>
         </div>
         <a href="https://socialbu.com" target="_blank" rel="noreferrer"
-          style={{ fontSize: 9, color: 'var(--muted)', textDecoration: 'none', textTransform: 'uppercase', letterSpacing: 1 }}>Manage ↗</a>
+          style={{ fontSize:9, color:'var(--muted)', textDecoration:'none', textTransform:'uppercase', letterSpacing:1 }}>Manage ↗</a>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        {followers != null && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-            <span style={{ color: 'var(--muted)' }}>Followers</span>
-            <span style={{ fontWeight: 600, color }}>{(followers || 0).toLocaleString()}</span>
-          </div>
-        )}
-        {likes != null && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-            <span style={{ color: 'var(--muted)' }}>Total Likes</span>
-            <span style={{ fontWeight: 600, color: 'var(--cream)' }}>{(likes).toLocaleString()}</span>
-          </div>
-        )}
-        {videos != null && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-            <span style={{ color: 'var(--muted)' }}>Videos</span>
-            <span style={{ fontWeight: 600, color: 'var(--cream)' }}>{(videos).toLocaleString()}</span>
-          </div>
-        )}
-        {views != null && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-            <span style={{ color: 'var(--muted)' }}>Total Views</span>
-            <span style={{ fontWeight: 600, color: 'var(--cream)' }}>{(views).toLocaleString()}</span>
-          </div>
-        )}
-        {monthlyViews != null && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-            <span style={{ color: 'var(--muted)' }}>Monthly Views</span>
-            <span style={{ fontWeight: 600, color: 'var(--cream)' }}>{(monthlyViews).toLocaleString()}</span>
-          </div>
-        )}
+      <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+        {followers != null && <div style={{ display:'flex', justifyContent:'space-between', fontSize:12 }}>
+          <span style={{ color:'var(--muted)' }}>Followers</span>
+          <span style={{ fontWeight:600, color }}>{(followers||0).toLocaleString()}</span>
+        </div>}
+        {likes != null && <div style={{ display:'flex', justifyContent:'space-between', fontSize:12 }}>
+          <span style={{ color:'var(--muted)' }}>Total Likes</span>
+          <span style={{ fontWeight:600, color:'var(--cream)' }}>{likes.toLocaleString()}</span>
+        </div>}
+        {videos != null && <div style={{ display:'flex', justifyContent:'space-between', fontSize:12 }}>
+          <span style={{ color:'var(--muted)' }}>Videos</span>
+          <span style={{ fontWeight:600, color:'var(--cream)' }}>{videos.toLocaleString()}</span>
+        </div>}
+        {views != null && <div style={{ display:'flex', justifyContent:'space-between', fontSize:12 }}>
+          <span style={{ color:'var(--muted)' }}>Total Views</span>
+          <span style={{ fontWeight:600, color:'var(--cream)' }}>{views.toLocaleString()}</span>
+        </div>}
+        {monthlyViews != null && <div style={{ display:'flex', justifyContent:'space-between', fontSize:12 }}>
+          <span style={{ color:'var(--muted)' }}>Monthly Views</span>
+          <span style={{ fontWeight:600, color:'var(--cream)' }}>{monthlyViews.toLocaleString()}</span>
+        </div>}
       </div>
     </div>
   )
@@ -113,14 +99,15 @@ export default function SocialCommand() {
   const [loading, setLoading]   = useState(false)
   const [lastSync, setLastSync] = useState(new Date(SEED.fetchedAt))
   const [spinning, setSpinning] = useState(false)
-  const [nextHour, setNextHour] = useState(msUntilNextHour())
+  const [nextHourMs, setNextHourMs] = useState(msUntilNextHour())
   const hourTimerRef            = useRef(null)
   const countdownRef            = useRef(null)
 
-  // ── Live fetch via Anthropic API (Claude-in-Claude) ──────────────────
+  // ── Live fetch via Anthropic API + Socialblu MCP ──────────────────────
   const fetchLive = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
     setSpinning(true)
+
     try {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -128,65 +115,75 @@ export default function SocialCommand() {
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
           max_tokens: 1000,
-          system: 'You are a data extraction assistant. Return ONLY valid JSON, no markdown, no explanation.',
+          system: 'You are a JSON extraction agent. Call the Socialblu MCP tools and return ONLY a raw JSON object — no markdown, no code fences, no explanation.',
           messages: [{
             role: 'user',
-            content: `Using the Socialblu MCP tools, fetch current metrics for account IDs [165296, 165297, 165298, 177489, 177779, 177890, 177891] for the last 17 days, plus top posts from the last 4 days. Return this exact JSON structure (all numbers must be integers or null):
+            content: `Fetch from Socialblu MCP:
+1. get_account_metrics for account_ids [165296,165297,165298,177489,177779,177890,177891] date_from today-17days date_to today
+2. get_engagement_trend for [165296,165297,165298] same date range
+3. get_top_posts for all accounts date_from today-4days date_to today limit 8
+
+Return this exact JSON (integers only, null if unavailable):
 {
-  "accounts": [
-    {"id":165296,"name":"TikTok","followers":NUMBER,"likes":NUMBER,"videos":NUMBER},
-    {"id":165297,"name":"Instagram","followers":NUMBER},
-    {"id":165298,"name":"YouTube","followers":NUMBER,"views":NUMBER,"videos":NUMBER},
-    {"id":177489,"name":"Pinterest","monthlyViews":NUMBER},
-    {"id":177890,"name":"X/Twitter","followers":NUMBER}
+  "accounts":[
+    {"id":165296,"followers":N,"likes":N,"videos":N},
+    {"id":165297,"followers":N},
+    {"id":165298,"followers":N,"views":N,"videos":N},
+    {"id":177489,"monthlyViews":N},
+    {"id":177890,"followers":N}
   ],
-  "tiktokDailyLikes": [{"date":"Mon DD","likes":NUMBER}],
-  "ytDailyViews": [{"date":"Mon DD","views":NUMBER}],
-  "engagementTrend": [{"date":"Mon DD","eng":NUMBER}],
-  "topPosts": [{"platform":"STRING","type":"STRING","content":"STRING(max 100 chars)","engagement":NUMBER,"date":"Mon DD","url":"STRING or null"}]
+  "tiktokDailyLikes":[{"date":"Mon D","likes":N}],
+  "ytDailyViews":[{"date":"Mon D","views":N}],
+  "engagementTrend":[{"date":"Mon D","eng":N}],
+  "topPosts":[{"platform":"S","type":"S","content":"S(max90)","engagement":N,"date":"Mon D","url":"S|null"}]
 }`
           }]
         })
       })
+
+      if (!res.ok) throw new Error(`API ${res.status}`)
       const json = await res.json()
-      const text = json.content?.[0]?.text || ''
+      const text = (json.content || []).map((b) => b.text || '').join('')
       const clean = text.replace(/```json|```/g, '').trim()
       const fresh = JSON.parse(clean)
 
-      // Merge with seed structure — keep color/icon from seed
-      const merged = {
-        ...SEED,
-        ...fresh,
-        accounts: SEED.accounts.map(seed => {
+      // Merge live data on top of seed (preserves icon/color/name)
+      setD(prev => ({
+        ...prev,
+        isLive: true,
+        fetchedAt: new Date().toISOString(),
+        accounts: prev.accounts.map(seed => {
           const live = (fresh.accounts || []).find(a => a.id === seed.id)
           return live ? { ...seed, ...live } : seed
         }),
-        fetchedAt: new Date().toISOString(),
-      }
-      setD(merged)
+        tiktokDailyLikes: fresh.tiktokDailyLikes?.length ? fresh.tiktokDailyLikes : prev.tiktokDailyLikes,
+        ytDailyViews:     fresh.ytDailyViews?.length     ? fresh.ytDailyViews     : prev.ytDailyViews,
+        engagementTrend:  fresh.engagementTrend?.length  ? fresh.engagementTrend  : prev.engagementTrend,
+        topPosts:         fresh.topPosts?.length          ? fresh.topPosts         : prev.topPosts,
+      }))
       setLastSync(new Date())
     } catch (e) {
-      console.warn('Social live fetch failed, using cached data:', e)
+      console.warn('Social live fetch failed, using cached data:', e.message)
     }
+
     setLoading(false)
     setSpinning(false)
   }, [])
 
-  // ── Initial load ──────────────────────────────────────────────────────
+  // ── Load on mount ──────────────────────────────────────────────────────
   useEffect(() => { fetchLive(false) }, [fetchLive])
 
-  // ── Hourly auto-refresh: fire exactly on the hour ─────────────────────
+  // ── Auto-refresh: next top of hour, then every 60 min ─────────────────
   useEffect(() => {
-    // Schedule first refresh at next top of hour
-    hourTimerRef.current = setTimeout(() => {
-      fetchLive(true)
-      // Then repeat every 60 minutes
-      hourTimerRef.current = setInterval(() => fetchLive(true), 60 * 60 * 1000)
-    }, msUntilNextHour())
-
-    // Countdown display — updates every minute
-    countdownRef.current = setInterval(() => setNextHour(msUntilNextHour()), 60 * 1000)
-
+    const scheduleNext = () => {
+      const delay = msUntilNextHour()
+      hourTimerRef.current = setTimeout(() => {
+        fetchLive(true)
+        hourTimerRef.current = setInterval(() => fetchLive(true), 60 * 60 * 1000)
+      }, delay)
+    }
+    scheduleNext()
+    countdownRef.current = setInterval(() => setNextHourMs(msUntilNextHour()), 30000)
     return () => {
       clearTimeout(hourTimerRef.current)
       clearInterval(hourTimerRef.current)
@@ -194,104 +191,97 @@ export default function SocialCommand() {
     }
   }, [fetchLive])
 
-  const totalFollowers = d.accounts.reduce((s, a) => s + (a.followers || 0), 0)
-  const tiktok = d.accounts.find(a => a.id === 165296) || {}
-  const youtube = d.accounts.find(a => a.id === 165298) || {}
-
-  const nextHourMins = Math.round(nextHour / 60000)
-  const syncAgo = lastSync ? Math.round((Date.now() - lastSync.getTime()) / 60000) : null
+  const totalFollowers  = d.accounts.reduce((s, a) => s + (a.followers || 0), 0)
+  const tiktok          = d.accounts.find(a => a.id === 165296) || {}
+  const youtube         = d.accounts.find(a => a.id === 165298) || {}
+  const nextHourMins    = Math.max(1, Math.round(nextHourMs / 60000))
+  const syncAgoMins     = Math.round((Date.now() - lastSync.getTime()) / 60000)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+
+      <style>{`@keyframes spin { to { transform:rotate(360deg); } }`}</style>
 
       {/* Header */}
       <div className="page-header">
         <div className="page-eyebrow">Reckoning Dashboard</div>
         <div className="page-title">Social Command</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4, flexWrap: 'wrap' }}>
-          <div className="page-sub" style={{ margin: 0 }}>
-            Live metrics · 7 platforms · 374 posts scheduled through Jun 9
+        <div style={{ display:'flex', alignItems:'center', gap:10, marginTop:4, flexWrap:'wrap' }}>
+          <div className="page-sub" style={{ margin:0 }}>
+            {d.isLive ? 'Live metrics via Socialblu' : 'Cached snapshot — loading live data…'} · 7 platforms · 374 posts scheduled
           </div>
-          {/* Sync status */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, color: loading ? 'var(--gold)' : '#22c55e' }}>
+          {/* Sync dot */}
+          <div style={{ display:'flex', alignItems:'center', gap:5, fontSize:10, color: d.isLive ? '#22c55e' : 'var(--gold)' }}>
             <div style={{
-              width: 6, height: 6, borderRadius: '50%',
-              background: loading ? 'var(--gold)' : '#22c55e',
-              animation: loading ? 'pulse 0.8s infinite' : 'pulse 3s infinite'
+              width:6, height:6, borderRadius:'50%',
+              background: d.isLive ? '#22c55e' : 'var(--gold)',
+              animation: loading ? 'pulse 0.7s infinite' : 'pulse 3s infinite'
             }} />
-            {loading
-              ? 'Fetching live data…'
-              : syncAgo === 0 ? 'Just updated'
-              : `Updated ${syncAgo}m ago`
+            {loading ? 'Fetching…' : d.isLive
+              ? (syncAgoMins < 1 ? 'Just updated' : `Updated ${syncAgoMins}m ago`)
+              : 'Snapshot · awaiting live fetch'
             }
           </div>
-          {/* Next auto-refresh */}
-          <div style={{ fontSize: 10, color: 'var(--muted)' }}>
-            Auto-refresh in {nextHourMins}m (top of hour)
+          {/* Countdown */}
+          <div style={{ fontSize:10, color:'var(--muted)' }}>
+            Auto-refresh in {nextHourMins}m
           </div>
-          {/* Manual refresh button */}
-          <button
-            onClick={() => fetchLive(false)}
-            disabled={loading}
+          {/* Manual refresh */}
+          <button onClick={() => fetchLive(false)} disabled={loading}
             style={{
-              display: 'flex', alignItems: 'center', gap: 5,
-              fontSize: 11, padding: '4px 12px', borderRadius: 6, cursor: loading ? 'not-allowed' : 'pointer',
-              border: '1px solid var(--border2)', background: 'transparent',
-              color: loading ? 'var(--muted)' : 'var(--cream)', transition: 'all .15s',
-              fontFamily: 'inherit',
+              display:'flex', alignItems:'center', gap:5,
+              fontSize:11, padding:'4px 12px', borderRadius:6,
+              cursor: loading ? 'not-allowed' : 'pointer',
+              border:'1px solid var(--border2)', background:'transparent',
+              color: loading ? 'var(--muted)' : 'var(--cream)',
+              transition:'all .15s', fontFamily:'inherit',
             }}>
-            <span style={{
-              display: 'inline-block', fontSize: 12,
-              animation: spinning ? 'spin 1s linear infinite' : 'none',
-            }}>↻</span>
+            <span style={{ display:'inline-block', fontSize:13, animation: spinning ? 'spin 1s linear infinite' : 'none' }}>↻</span>
             {loading ? 'Refreshing…' : 'Refresh now'}
           </button>
         </div>
       </div>
 
-      {/* Spin keyframe */}
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-
-      {/* Summary KPIs */}
+      {/* KPIs */}
       <div className="kpi-grid">
         {[
-          { label: 'Total Followers', value: totalFollowers.toLocaleString(), color: 'var(--gold)', sub: 'Across 5 platforms' },
-          { label: 'TikTok Followers', value: (tiktok.followers || 0).toLocaleString(), color: '#C9A84C', sub: `+${(tiktok.likes || 0).toLocaleString()} total likes` },
-          { label: 'YouTube Views',   value: (youtube.views || 0).toLocaleString(), color: '#2A9D8F', sub: `${youtube.followers || 0} subscribers · ${youtube.videos || 0} videos` },
-          { label: 'Posts Scheduled', value: '374', color: 'var(--violet)', sub: 'Through Jun 9 · 2x/day' },
+          { label:'Total Followers',  value: totalFollowers.toLocaleString(),            color:'var(--gold)',    sub:'Across 5 platforms' },
+          { label:'TikTok Followers', value: (tiktok.followers||0).toLocaleString(),      color:'#C9A84C',       sub:`+${(tiktok.likes||0).toLocaleString()} total likes` },
+          { label:'YouTube Views',    value: (youtube.views||0).toLocaleString(),         color:'#2A9D8F',       sub:`${youtube.followers||0} subscribers · ${youtube.videos||0} videos` },
+          { label:'Posts Scheduled',  value: '374',                                       color:'var(--violet)', sub:'Through Jun 9 · 2x/day' },
         ].map(k => (
           <div key={k.label} className="kpi-card" style={{ '--accent': k.color }}>
             <div className="kpi-label">{k.label}</div>
-            <div className="kpi-value" style={{ fontSize: 22, color: k.color }}>{k.value}</div>
+            <div className="kpi-value" style={{ fontSize:22, color:k.color }}>{k.value}</div>
             {k.sub && <div className="kpi-sub">{k.sub}</div>}
           </div>
         ))}
       </div>
 
       {/* Platform cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: 10 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(155px, 1fr))', gap:10 }}>
         {d.accounts.map(a => <AccountCard key={a.id} {...a} />)}
       </div>
 
-      {/* Engagement trend — full width */}
+      {/* Engagement trend */}
       <div className="card">
-        <div className="card-title">Overall Engagement Trend — Last 17 Days</div>
-        <ResponsiveContainer width="100%" height={140}>
+        <div className="card-title">Overall Engagement — Last 17 Days</div>
+        <ResponsiveContainer width="100%" height={130}>
           <LineChart data={d.engagementTrend}>
             <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.04)" />
-            <XAxis dataKey="date" tick={{ fill: 'var(--muted)', fontSize: 10 }} axisLine={false} tickLine={false} interval={3} />
-            <YAxis tick={{ fill: 'var(--muted)', fontSize: 10 }} axisLine={false} tickLine={false} />
-            <Tooltip contentStyle={{ background: 'var(--navy3)', border: '1px solid var(--border2)', borderRadius: 8, fontSize: 12 }} />
+            <XAxis dataKey="date" tick={{ fill:'var(--muted)', fontSize:10 }} axisLine={false} tickLine={false} interval={3} />
+            <YAxis tick={{ fill:'var(--muted)', fontSize:10 }} axisLine={false} tickLine={false} />
+            <Tooltip contentStyle={{ background:'var(--navy3)', border:'1px solid var(--border2)', borderRadius:8, fontSize:12 }} />
             <Line type="monotone" dataKey="eng" stroke="#C9A84C" strokeWidth={2} dot={false} />
           </LineChart>
         </ResponsiveContainer>
       </div>
 
-      {/* TikTok likes + YouTube views */}
+      {/* TikTok + YouTube charts */}
       <div className="grid-2">
         <div className="card">
           <div className="card-title">TikTok Daily Likes</div>
-          <ResponsiveContainer width="100%" height={150}>
+          <ResponsiveContainer width="100%" height={140}>
             <AreaChart data={d.tiktokDailyLikes}>
               <defs>
                 <linearGradient id="likeGrad" x1="0" y1="0" x2="0" y2="1">
@@ -300,21 +290,21 @@ export default function SocialCommand() {
                 </linearGradient>
               </defs>
               <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.04)" />
-              <XAxis dataKey="date" tick={{ fill: 'var(--muted)', fontSize: 10 }} axisLine={false} tickLine={false} interval={3} />
-              <YAxis tick={{ fill: 'var(--muted)', fontSize: 10 }} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={{ background: 'var(--navy3)', border: '1px solid var(--border2)', borderRadius: 8, fontSize: 12 }} />
+              <XAxis dataKey="date" tick={{ fill:'var(--muted)', fontSize:10 }} axisLine={false} tickLine={false} interval={3} />
+              <YAxis tick={{ fill:'var(--muted)', fontSize:10 }} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={{ background:'var(--navy3)', border:'1px solid var(--border2)', borderRadius:8, fontSize:12 }} />
               <Area type="monotone" dataKey="likes" stroke="#C9A84C" strokeWidth={2} fill="url(#likeGrad)" />
             </AreaChart>
           </ResponsiveContainer>
         </div>
         <div className="card">
           <div className="card-title">YouTube Daily Views</div>
-          <ResponsiveContainer width="100%" height={150}>
+          <ResponsiveContainer width="100%" height={140}>
             <BarChart data={d.ytDailyViews}>
               <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.04)" />
-              <XAxis dataKey="date" tick={{ fill: 'var(--muted)', fontSize: 10 }} axisLine={false} tickLine={false} interval={3} />
-              <YAxis tick={{ fill: 'var(--muted)', fontSize: 10 }} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={{ background: 'var(--navy3)', border: '1px solid var(--border2)', borderRadius: 8, fontSize: 12 }} />
+              <XAxis dataKey="date" tick={{ fill:'var(--muted)', fontSize:10 }} axisLine={false} tickLine={false} interval={3} />
+              <YAxis tick={{ fill:'var(--muted)', fontSize:10 }} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={{ background:'var(--navy3)', border:'1px solid var(--border2)', borderRadius:8, fontSize:12 }} />
               <Bar dataKey="views" radius={[3,3,0,0]} fill="#2A9D8F" />
             </BarChart>
           </ResponsiveContainer>
@@ -326,43 +316,33 @@ export default function SocialCommand() {
         <div className="card-title">
           Top Posts — Last 4 Days
           <a href="https://socialbu.com" target="_blank" rel="noreferrer"
-            style={{ fontSize: 9, color: 'var(--teal)', textDecoration: 'none', letterSpacing: 1, textTransform: 'uppercase' }}>
+            style={{ fontSize:9, color:'var(--teal)', textDecoration:'none', letterSpacing:1, textTransform:'uppercase' }}>
             Open Socialblu ↗
           </a>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
           {d.topPosts.map((post, i) => (
-            <div key={i} style={{
-              display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 10px',
-              background: 'var(--navy3)', borderRadius: 8
-            }}>
-              <span style={{
-                width: 8, height: 8, borderRadius: '50%',
-                background: PLATFORM_COLORS[post.platform] || 'var(--muted)',
-                flexShrink: 0, marginTop: 4
-              }} />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 11, color: 'var(--cream)', lineHeight: 1.4 }}>
-                  {post.content?.slice(0, 95)}{(post.content?.length || 0) > 95 ? '…' : ''}
+            <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'8px 10px', background:'var(--navy3)', borderRadius:8 }}>
+              <span style={{ width:8, height:8, borderRadius:'50%', background:PLATFORM_COLORS[post.platform]||'var(--muted)', flexShrink:0, marginTop:4 }} />
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:11, color:'var(--cream)', lineHeight:1.4 }}>
+                  {(post.content||'').slice(0,90)}{(post.content||'').length>90?'…':''}
                 </div>
-                <div style={{ display: 'flex', gap: 8, marginTop: 3, fontSize: 10, color: 'var(--muted)' }}>
-                  <span style={{ color: PLATFORM_COLORS[post.platform] }}>{post.platform}</span>
+                <div style={{ display:'flex', gap:8, marginTop:3, fontSize:10, color:'var(--muted)' }}>
+                  <span style={{ color:PLATFORM_COLORS[post.platform] }}>{post.platform}</span>
                   <span>{post.type}</span>
                   <span>{post.date}</span>
-                  {post.engagement > 0 && <span style={{ color: '#22c55e' }}>{post.engagement} engagements</span>}
+                  {post.engagement>0 && <span style={{ color:'#22c55e' }}>{post.engagement} engagements</span>}
                 </div>
               </div>
-              {post.url && (
-                <a href={post.url} target="_blank" rel="noreferrer"
-                  style={{ fontSize: 10, color: 'var(--teal)', textDecoration: 'none', whiteSpace: 'nowrap' }}>View ↗</a>
-              )}
+              {post.url && <a href={post.url} target="_blank" rel="noreferrer"
+                style={{ fontSize:10, color:'var(--teal)', textDecoration:'none', whiteSpace:'nowrap' }}>View ↗</a>}
             </div>
           ))}
         </div>
-        {/* Last fetch timestamp */}
-        <div style={{ marginTop: 12, fontSize: 10, color: 'var(--muted)', display: 'flex', justifyContent: 'space-between' }}>
-          <span>Data via Socialblu MCP · fetches live on load and hourly</span>
-          <span>Last fetch: {lastSync.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
+        <div style={{ marginTop:10, fontSize:10, color:'var(--muted)', display:'flex', justifyContent:'space-between' }}>
+          <span>Socialblu MCP · {d.isLive ? 'live' : 'cached'} · auto-refreshes hourly on the hour</span>
+          <span>Last: {lastSync.toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit' })}</span>
         </div>
       </div>
 
