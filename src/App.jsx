@@ -7,7 +7,7 @@ import SprintBoard from './views/SprintBoard.jsx'
 import SocialCommand from './views/SocialCommand.jsx'
 import PipelineCRM from './views/PipelineCRM.jsx'
 import Infrastructure from './views/Infrastructure.jsx'
-import { BudgetView } from './views/Placeholders.jsx'
+import BudgetAnalytics from './views/BudgetAnalytics.jsx'
 
 const VIEWS = {
   command:  <CommandCenter />,
@@ -16,7 +16,7 @@ const VIEWS = {
   social:   <SocialCommand />,
   pipeline: <PipelineCRM />,
   infra:    <Infrastructure />,
-  budget:   <BudgetView />,
+  budget:   <BudgetAnalytics />,
 }
 
 export default function App() {
