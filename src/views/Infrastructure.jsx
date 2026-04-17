@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { supabase, VERCEL_TEAM } from '../supabase.js'
+import PageHeader from '../components/PageHeader.jsx'
+import { useAutoRefresh } from '../hooks/useAutoRefresh.js'
 
 const VERCEL_TOKEN = import.meta.env.VITE_VERCEL_TOKEN || ''
 const GH_TOKEN = import.meta.env.VITE_GH_TOKEN || ''
@@ -50,77 +52,73 @@ function StatusPill({ status }) {
 }
 
 export default function Infrastructure() {
-  const [statuses, setStatuses] = useState({})
-  const [ghData, setGhData] = useState({})
-  const [edgeFns, setEdgeFns] = useState([])
+  const [statuses, setStatuses]       = useState({})
+  const [ghData, setGhData]           = useState({})
+  const [edgeFns, setEdgeFns]         = useState([])
   const [storageCount, setStorageCount] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading]         = useState(true)
+  const [lastSync, setLastSync]       = useState(null)
   const [groupFilter, setGroupFilter] = useState('All')
 
-  useEffect(() => {
-    async function load() {
-      // Supabase: edge functions + storage
-      const [fnRes] = await Promise.all([
-        supabase.functions.listFunctions ? supabase.functions.listFunctions() : Promise.resolve({ data: null }),
-      ])
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
 
-      // Storage count
-      try {
-        const { data: buckets } = await supabase.storage.listBuckets()
-        if (buckets) setStorageCount(buckets.length)
-      } catch {}
+    // Storage count
+    try {
+      const { data: buckets } = await supabase.storage.listBuckets()
+      if (buckets) setStorageCount(buckets.length)
+    } catch {}
 
-      // GitHub repos
-      const ghHeaders = { Authorization: `Bearer ${GH_TOKEN}`, Accept: 'application/vnd.github+json' }
-      const ghResults = {}
-      await Promise.allSettled(
-        GH_REPOS.map(async repo => {
-          try {
-            const [repoRes, commitsRes] = await Promise.all([
-              fetch(`https://api.github.com/repos/cha-llc/${repo}`, { headers: ghHeaders }),
-              fetch(`https://api.github.com/repos/cha-llc/${repo}/commits?per_page=1`, { headers: ghHeaders }),
-            ])
-            if (repoRes.ok) {
-              const data = await repoRes.json()
-              const lastCommit = commitsRes.ok ? (await commitsRes.json())[0] : null
-              ghResults[repo] = {
-                stars: data.stargazers_count,
-                forks: data.forks_count,
-                openIssues: data.open_issues_count,
-                lastPush: data.pushed_at,
-                lastCommitMsg: lastCommit?.commit?.message?.split('\n')[0]?.slice(0, 60) || null,
-                lastCommitSha: lastCommit?.sha?.slice(0, 7) || null,
-                url: data.html_url,
-              }
+    // GitHub repos
+    const ghHeaders = { Authorization: `Bearer ${GH_TOKEN}`, Accept: 'application/vnd.github+json' }
+    const ghResults = {}
+    await Promise.allSettled(
+      GH_REPOS.map(async repo => {
+        try {
+          const [repoRes, commitsRes] = await Promise.all([
+            fetch(`https://api.github.com/repos/cha-llc/${repo}`, { headers: ghHeaders }),
+            fetch(`https://api.github.com/repos/cha-llc/${repo}/commits?per_page=1`, { headers: ghHeaders }),
+          ])
+          if (repoRes.ok) {
+            const data = await repoRes.json()
+            const lastCommit = commitsRes.ok ? (await commitsRes.json())[0] : null
+            ghResults[repo] = {
+              stars: data.stargazers_count, forks: data.forks_count,
+              openIssues: data.open_issues_count, lastPush: data.pushed_at,
+              lastCommitMsg: lastCommit?.commit?.message?.split('\n')[0]?.slice(0, 60) || null,
+              lastCommitSha: lastCommit?.sha?.slice(0, 7) || null, url: data.html_url,
             }
-          } catch {}
-        })
-      )
-      setGhData(ghResults)
+          }
+        } catch {}
+      })
+    )
+    setGhData(ghResults)
 
-      // Vercel deployment statuses for primary projects
-      const primaryProjects = ALL_PROJECTS.filter(p => p.group !== 'Legacy').slice(0, 10)
-      const vercelResults = {}
-      await Promise.allSettled(
-        primaryProjects.map(async proj => {
-          try {
-            const r = await fetch(
-              `https://api.vercel.com/v6/deployments?app=${proj.name}&limit=1&teamId=${VERCEL_TEAM}&target=production`,
-              { headers: { Authorization: `Bearer ${VERCEL_TOKEN}` } }
-            )
-            if (r.ok) {
-              const data = await r.json()
-              const d = data.deployments?.[0]
-              vercelResults[proj.name] = d ? { status: d.state, url: d.url, created: d.createdAt } : { status: 'READY' }
-            }
-          } catch {}
-        })
-      )
-      setStatuses(vercelResults)
-      setLoading(false)
-    }
-    load()
+    // Vercel deployment statuses
+    const primaryProjects = ALL_PROJECTS.filter(p => p.group !== 'Legacy').slice(0, 10)
+    const vercelResults = {}
+    await Promise.allSettled(
+      primaryProjects.map(async proj => {
+        try {
+          const r = await fetch(
+            `https://api.vercel.com/v6/deployments?app=${proj.name}&limit=1&teamId=${VERCEL_TEAM}&target=production`,
+            { headers: { Authorization: `Bearer ${VERCEL_TOKEN}` } }
+          )
+          if (r.ok) {
+            const data = await r.json()
+            const d = data.deployments?.[0]
+            vercelResults[proj.name] = d ? { status: d.state, url: d.url, created: d.createdAt } : { status: 'READY' }
+          }
+        } catch {}
+      })
+    )
+    setStatuses(vercelResults)
+    setLastSync(new Date())
+    setLoading(false)
   }, [])
+
+  useEffect(() => { load(false) }, [load])
+  useAutoRefresh(load)
 
   const groups = ['All', ...new Set(ALL_PROJECTS.map(p => p.group))]
   const filtered = groupFilter === 'All' ? ALL_PROJECTS : ALL_PROJECTS.filter(p => p.group === groupFilter)
@@ -131,11 +129,14 @@ export default function Infrastructure() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-      <div className="page-header">
-        <div className="page-eyebrow">Reckoning Dashboard</div>
-        <div className="page-title">Infrastructure</div>
-        <div className="page-sub">21 Vercel projects · GitHub repo activity · Supabase edge functions · Storage</div>
-      </div>
+      <PageHeader
+        title="Infrastructure"
+        sub="21 Vercel projects · GitHub repo activity · Supabase edge functions · Storage"
+        loading={loading}
+        lastSync={lastSync}
+        isLive={!!lastSync}
+        onRefresh={() => load(false)}
+      />
 
       {/* Summary */}
       <div className="kpi-grid">

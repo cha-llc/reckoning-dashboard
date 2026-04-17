@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { supabase } from '../supabase.js'
+import PageHeader from '../components/PageHeader.jsx'
+import { useAutoRefresh } from '../hooks/useAutoRefresh.js'
 
 const fmt = v => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 0 })}`
 
@@ -36,22 +38,25 @@ const STAGE_COLORS = {
 }
 
 export default function PipelineCRM() {
-  const [contacts, setContacts] = useState(0)
+  const [contacts, setContacts]   = useState(0)
   const [purchases, setPurchases] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading]     = useState(true)
+  const [lastSync, setLastSync]   = useState(null)
 
-  useEffect(() => {
-    async function load() {
-      const [subRes, ppRes] = await Promise.all([
-        supabase.from('newsletter_subscribers').select('id', { count: 'exact', head: true }),
-        supabase.from('product_purchases').select('product_name, amount, created_at').order('created_at', { ascending: false }).limit(10),
-      ])
-      setContacts(subRes.count || 0)
-      setPurchases(ppRes.data || [])
-      setLoading(false)
-    }
-    load()
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
+    const [subRes, ppRes] = await Promise.all([
+      supabase.from('newsletter_subscribers').select('id', { count: 'exact', head: true }),
+      supabase.from('product_purchases').select('product_name, amount, created_at').order('created_at', { ascending: false }).limit(10),
+    ])
+    setContacts(subRes.count || 0)
+    setPurchases(ppRes.data || [])
+    setLastSync(new Date())
+    setLoading(false)
   }, [])
+
+  useEffect(() => { load(false) }, [load])
+  useAutoRefresh(load)
 
   const totalPipelineValue = PHASE_DEALS.reduce((s, d) => s + d.amount, 0)
   const weightedValue = PHASE_DEALS.reduce((s, d) => s + d.amount * d.prob, 0)
@@ -66,11 +71,14 @@ export default function PipelineCRM() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-      <div className="page-header">
-        <div className="page-eyebrow">Reckoning Dashboard</div>
-        <div className="page-title">Pipeline & CRM</div>
-        <div className="page-sub">HubSpot pipeline · Phase targets · Product deals · Contact funnel</div>
-      </div>
+      <PageHeader
+        title="Pipeline & CRM"
+        sub="HubSpot pipeline · Phase targets · Product deals · Contact funnel"
+        loading={loading}
+        lastSync={lastSync}
+        isLive={!!lastSync}
+        onRefresh={() => load(false)}
+      />
 
       {/* KPIs */}
       <div className="kpi-grid">

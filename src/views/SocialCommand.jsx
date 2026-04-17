@@ -1,5 +1,7 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, CartesianGrid, LineChart, Line } from 'recharts'
+import PageHeader from '../components/PageHeader.jsx'
+import { useAutoRefresh } from '../hooks/useAutoRefresh.js'
 
 // ── Seed snapshot (Apr 17 2026, from live Socialblu MCP pull) ─────────────
 const SEED = {
@@ -98,15 +100,10 @@ export default function SocialCommand() {
   const [d, setD]               = useState(SEED)
   const [loading, setLoading]   = useState(false)
   const [lastSync, setLastSync] = useState(new Date(SEED.fetchedAt))
-  const [spinning, setSpinning] = useState(false)
-  const [nextHourMs, setNextHourMs] = useState(msUntilNextHour())
-  const hourTimerRef            = useRef(null)
-  const countdownRef            = useRef(null)
 
   // ── Live fetch via Anthropic API + Socialblu MCP ──────────────────────
   const fetchLive = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
-    setSpinning(true)
 
     try {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -167,80 +164,32 @@ Return this exact JSON (integers only, null if unavailable):
     }
 
     setLoading(false)
-    setSpinning(false)
   }, [])
 
-  // ── Load on mount ──────────────────────────────────────────────────────
+  // ── Load on mount + hourly auto-refresh ───────────────────────────────
   useEffect(() => { fetchLive(false) }, [fetchLive])
-
-  // ── Auto-refresh: next top of hour, then every 60 min ─────────────────
-  useEffect(() => {
-    const scheduleNext = () => {
-      const delay = msUntilNextHour()
-      hourTimerRef.current = setTimeout(() => {
-        fetchLive(true)
-        hourTimerRef.current = setInterval(() => fetchLive(true), 60 * 60 * 1000)
-      }, delay)
-    }
-    scheduleNext()
-    countdownRef.current = setInterval(() => setNextHourMs(msUntilNextHour()), 30000)
-    return () => {
-      clearTimeout(hourTimerRef.current)
-      clearInterval(hourTimerRef.current)
-      clearInterval(countdownRef.current)
-    }
-  }, [fetchLive])
+  useAutoRefresh(fetchLive)
 
   const totalFollowers  = d.accounts.reduce((s, a) => s + (a.followers || 0), 0)
   const tiktok          = d.accounts.find(a => a.id === 165296) || {}
   const youtube         = d.accounts.find(a => a.id === 165298) || {}
-  const nextHourMins    = Math.max(1, Math.round(nextHourMs / 60000))
-  const syncAgoMins     = Math.round((Date.now() - lastSync.getTime()) / 60000)
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
 
-      <style>{`@keyframes spin { to { transform:rotate(360deg); } }`}</style>
-
-      {/* Header */}
-      <div className="page-header">
-        <div className="page-eyebrow">Reckoning Dashboard</div>
-        <div className="page-title">Social Command</div>
-        <div style={{ display:'flex', alignItems:'center', gap:10, marginTop:4, flexWrap:'wrap' }}>
-          <div className="page-sub" style={{ margin:0 }}>
-            {d.isLive ? 'Live metrics via Socialblu' : 'Cached snapshot — loading live data…'} · 7 platforms · 374 posts scheduled
-          </div>
-          {/* Sync dot */}
-          <div style={{ display:'flex', alignItems:'center', gap:5, fontSize:10, color: d.isLive ? '#22c55e' : 'var(--gold)' }}>
-            <div style={{
-              width:6, height:6, borderRadius:'50%',
-              background: d.isLive ? '#22c55e' : 'var(--gold)',
-              animation: loading ? 'pulse 0.7s infinite' : 'pulse 3s infinite'
-            }} />
-            {loading ? 'Fetching…' : d.isLive
-              ? (syncAgoMins < 1 ? 'Just updated' : `Updated ${syncAgoMins}m ago`)
-              : 'Snapshot · awaiting live fetch'
-            }
-          </div>
-          {/* Countdown */}
-          <div style={{ fontSize:10, color:'var(--muted)' }}>
-            Auto-refresh in {nextHourMins}m
-          </div>
-          {/* Manual refresh */}
-          <button onClick={() => fetchLive(false)} disabled={loading}
-            style={{
-              display:'flex', alignItems:'center', gap:5,
-              fontSize:11, padding:'4px 12px', borderRadius:6,
-              cursor: loading ? 'not-allowed' : 'pointer',
-              border:'1px solid var(--border2)', background:'transparent',
-              color: loading ? 'var(--muted)' : 'var(--cream)',
-              transition:'all .15s', fontFamily:'inherit',
-            }}>
-            <span style={{ display:'inline-block', fontSize:13, animation: spinning ? 'spin 1s linear infinite' : 'none' }}>↻</span>
-            {loading ? 'Refreshing…' : 'Refresh now'}
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Social Command"
+        sub={`${d.isLive ? 'Live metrics via Socialblu' : 'Cached snapshot'} · 7 platforms · 374 posts scheduled through Jun 9`}
+        loading={loading}
+        lastSync={lastSync}
+        isLive={d.isLive}
+        onRefresh={() => fetchLive(false)}
+      >
+        <a href="https://socialbu.com" target="_blank" rel="noreferrer"
+          style={{ fontSize:10, color:'var(--teal)', textDecoration:'none', textTransform:'uppercase', letterSpacing:1 }}>
+          Open Socialblu ↗
+        </a>
+      </PageHeader>
 
       {/* KPIs */}
       <div className="kpi-grid">
@@ -256,6 +205,7 @@ Return this exact JSON (integers only, null if unavailable):
             {k.sub && <div className="kpi-sub">{k.sub}</div>}
           </div>
         ))}
+
       </div>
 
       {/* Platform cards */}

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area, CartesianGrid } from 'recharts'
 import { useCommandCenter, useBudgetAnalytics, useProducts, usePhaseProgress } from '../hooks/useData.js'
+import PageHeader from '../components/PageHeader.jsx'
+import { useAutoRefresh } from '../hooks/useAutoRefresh.js'
 
 const fmt = n => n === undefined || n === null ? '$0' : `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const fmtShort = n => `$${Number(n || 0).toFixed(2)}`
@@ -223,15 +225,13 @@ function ProductRow({ name, price, paid, conv, rev, color, fb_pos, fb_neg, url }
 
 // ── MAIN COMMAND CENTER ──────────────────────────────────────────────────
 export default function CommandCenter() {
-  const { data, loading } = useCommandCenter()
-  const { data: products, loading: prodLoading } = useProducts()
+  const { data, loading, lastSync, isLive, refetch } = useCommandCenter()
+  const { data: products, loading: prodLoading, refetch: refetchProducts } = useProducts()
   const phases = usePhaseProgress()
-  const [now, setNow] = useState(new Date())
 
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 60000)
-    return () => clearInterval(t)
-  }, [])
+  // Hourly auto-refresh
+  useAutoRefresh(refetch)
+  useAutoRefresh(refetchProducts)
 
   const phase1Target = 1200
   const totalRevUSD = data?.totalRev || 0
@@ -239,15 +239,20 @@ export default function CommandCenter() {
   const fullYearTarget = 27200
   const fullYearPct = Math.min(Math.round((totalRevUSD / fullYearTarget) * 100), 100)
 
+  const handleRefresh = () => { refetch(false); refetchProducts(false) }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-      {/* Page header */}
-      <div className="page-header">
-        <div className="page-eyebrow">Free Era Blueprint Reckoning</div>
-        <div className="page-title">Command Center</div>
-        <div className="page-sub">Apr 14 – Dec 31, 2026 · Live campaign intelligence</div>
-      </div>
+      <PageHeader
+        eyebrow="Free Era Blueprint Reckoning"
+        title="Command Center"
+        sub="Apr 14 – Dec 31, 2026 · Live campaign intelligence"
+        loading={loading}
+        lastSync={lastSync}
+        isLive={isLive}
+        onRefresh={handleRefresh}
+      />
 
       {/* TOP KPI STRIP */}
       <div className="kpi-grid">

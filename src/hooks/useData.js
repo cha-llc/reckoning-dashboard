@@ -2,10 +2,12 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase, CAMPAIGN_PRODUCTS, PHASE_TARGETS } from '../supabase.js'
 
 export function useCommandCenter() {
-  const [data, setData] = useState(null)
+  const [data, setData]       = useState(null)
   const [loading, setLoading] = useState(true)
+  const [lastSync, setLastSync] = useState(null)
 
-  const fetch = useCallback(async () => {
+  const fetch = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     const [bpRes, ceRes, flRes, subsRes, lmRes, fbRes, milestonesRes, sprintRes, eventsRes] = await Promise.all([
       supabase.from('brandpulse_sessions').select('id', { count: 'exact', head: true }).eq('paid', true),
       supabase.from('clarityengine_sessions').select('id', { count: 'exact', head: true }).eq('paid', true),
@@ -35,23 +37,23 @@ export function useCommandCenter() {
       sprint: sprintRes.data?.[0] || null,
       events: eventsRes.data || [],
     })
+    setLastSync(new Date())
     setLoading(false)
   }, [])
 
   useEffect(() => {
-    fetch()
-    // Realtime subscription
+    fetch(false)
     const channel = supabase.channel('dashboard-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'campaign_events' }, () => fetch())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'kpi_snapshots' }, () => fetch())
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'brandpulse_sessions' }, () => fetch())
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'clarityengine_sessions' }, () => fetch())
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'flagged_sessions' }, () => fetch())
+      .on('postgres_changes', { event: '*',    schema: 'public', table: 'campaign_events' },        () => fetch(true))
+      .on('postgres_changes', { event: '*',    schema: 'public', table: 'kpi_snapshots' },          () => fetch(true))
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'brandpulse_sessions' },  () => fetch(true))
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'clarityengine_sessions' },() => fetch(true))
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'flagged_sessions' },     () => fetch(true))
       .subscribe()
     return () => supabase.removeChannel(channel)
   }, [fetch])
 
-  return { data, loading, refetch: fetch }
+  return { data, loading, lastSync, isLive: !!lastSync, refetch: fetch }
 }
 
 export function useBudgetAnalytics() {
@@ -128,42 +130,50 @@ export function useBudgetAnalytics() {
 }
 
 export function useProducts() {
-  const [data, setData] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [data, setData]         = useState([])
+  const [loading, setLoading]   = useState(true)
+  const [lastSync, setLastSync] = useState(null)
 
-  useEffect(() => {
-    async function fetch() {
-      const [bpAll, ceAll, flAll, fbAll] = await Promise.all([
-        supabase.from('brandpulse_sessions').select('paid'),
-        supabase.from('clarityengine_sessions').select('paid'),
-        supabase.from('flagged_sessions').select('paid'),
-        supabase.from('customer_feedback').select('product, sentiment'),
-      ])
-      const sessionMap = {
-        'BrandPulse':     bpAll.data || [],
-        'Clarity Engine': ceAll.data || [],
-        'Flagged':        flAll.data || [],
-      }
-      const fb = fbAll.data || []
-      const products = CAMPAIGN_PRODUCTS.map(p => {
-        const sessions = sessionMap[p.name] || []
-        const paid = sessions.filter(s => s.paid).length
-        const total = sessions.length
-        const conv = total > 0 ? Math.round((paid / total) * 100) : (paid > 0 ? 100 : 0)
-        const rev = paid * p.price
-        const pfb = fb.filter(f => f.product === p.name)
-        return { ...p, paid, total: total || paid, conv, rev: Math.round(rev * 100) / 100,
-          fb_pos: pfb.filter(f => f.sentiment === 'positive').length,
-          fb_neg: pfb.filter(f => f.sentiment === 'negative').length,
-        }
-      })
-      setData(products)
-      setLoading(false)
+  const fetchProducts = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
+    const [bpAll, ceAll, flAll, fbAll] = await Promise.all([
+      supabase.from('brandpulse_sessions').select('paid, created_at'),
+      supabase.from('clarityengine_sessions').select('paid, created_at'),
+      supabase.from('flagged_sessions').select('paid, created_at'),
+      supabase.from('customer_feedback').select('product, sentiment'),
+    ])
+    const sessionMap = {
+      'BrandPulse':     bpAll.data || [],
+      'Clarity Engine': ceAll.data || [],
+      'Flagged':        flAll.data || [],
     }
-    fetch()
+    const fb = fbAll.data || []
+    const products = CAMPAIGN_PRODUCTS.map(p => {
+      const sessions = sessionMap[p.name] || []
+      const paid = sessions.filter(s => s.paid).length
+      const total = sessions.length
+      const conv = total > 0 ? Math.round((paid / total) * 100) : (paid > 0 ? 100 : 0)
+      const rev = paid * p.price
+      const pfb = fb.filter(f => f.product === p.name)
+      const daily = Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(); d.setDate(d.getDate() - (6 - i))
+        const label = d.toLocaleDateString('en-US', { weekday: 'short' })
+        const dayRev = sessions.filter(s => s.paid && new Date(s.created_at).toDateString() === d.toDateString()).length * p.price
+        return { label, rev: Math.round(dayRev * 100) / 100 }
+      })
+      return { ...p, paid, total: total || paid, conv, rev: Math.round(rev * 100) / 100, daily,
+        fb_pos: pfb.filter(f => f.sentiment === 'positive').length,
+        fb_neg: pfb.filter(f => f.sentiment === 'negative').length,
+      }
+    })
+    setData(products)
+    setLastSync(new Date())
+    setLoading(false)
   }, [])
 
-  return { data, loading }
+  useEffect(() => { fetchProducts(false) }, [fetchProducts])
+
+  return { data, loading, lastSync, isLive: !!lastSync, refetch: fetchProducts }
 }
 
 export function usePhaseProgress() {

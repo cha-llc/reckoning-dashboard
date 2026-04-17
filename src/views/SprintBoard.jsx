@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../supabase.js'
+import PageHeader from '../components/PageHeader.jsx'
+import { useAutoRefresh } from '../hooks/useAutoRefresh.js'
 
 const SUPABASE_URL  = 'https://vzzzqsmqqaoilkmskadl.supabase.co'
 const ANON_KEY      = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6enpxc21xcWFvaWxrbXNrYWRsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2Mzk0MzgsImV4cCI6MjA5MDIxNTQzOH0.M3pLdkRMFXyvTjcKhX3fR7o6pGtW7Xg7NKcO_sHw2Oo'
@@ -145,30 +147,27 @@ export default function SprintBoard() {
   const done        = issues.filter(i => i.status === 'Done').length
   const inProgress  = issues.filter(i => i.status === 'In Progress').length
   const todo        = issues.filter(i => i.status === 'Todo').length
+  useAutoRefresh(fetchLinear)
+
   const velocityPct = Math.round((done / Math.max(issues.length, 1)) * 100)
   const columns     = ['In Progress', 'Todo', 'Done']
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-      <div className="page-header">
-        <div className="page-eyebrow">Reckoning Dashboard</div>
-        <div className="page-title">Sprint Board</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4, flexWrap: 'wrap' }}>
-          <div className="page-sub" style={{ margin: 0 }}>Linear issue tracker · Phase milestones · Sprint velocity</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, color: linearOk ? '#22c55e' : 'var(--muted)' }}>
-            <div style={{ width: 6, height: 6, borderRadius: '50%', background: linearOk ? '#22c55e' : 'rgba(255,255,255,0.2)', animation: linearOk ? 'pulse 2s infinite' : 'none' }} />
-            {linearOk
-              ? 'Live · auto-syncs every 60s' + (lastSync ? ' · ' + lastSync.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '')
-              : loading ? 'Connecting…' : 'Cached snapshot'
-            }
-          </div>
-          <button onClick={() => fetchLinear(false)}
-            style={{ fontSize: 10, padding: '2px 8px', borderRadius: 5, border: '1px solid var(--border2)', background: 'transparent', color: 'var(--muted)', cursor: 'pointer' }}>
-            ↻ Refresh
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Sprint Board"
+        sub="Linear issue tracker · Phase milestones · Sprint velocity"
+        loading={loading}
+        lastSync={lastSync}
+        isLive={linearOk}
+        onRefresh={() => fetchLinear(false)}
+      >
+        <a href="https://linear.app/cha-llc" target="_blank" rel="noreferrer"
+          style={{ fontSize: 10, color: 'var(--teal)', textDecoration: 'none', textTransform: 'uppercase', letterSpacing: 1 }}>
+          Open Linear ↗
+        </a>
+      </PageHeader>
 
       {error && error !== 'LINEAR_API_KEY not configured' && (
         <div style={{ fontSize: 11, color: 'var(--crimson)', background: 'rgba(193,18,31,0.08)', border: '1px solid rgba(193,18,31,0.2)', borderRadius: 8, padding: '8px 12px', display: 'flex', justifyContent: 'space-between' }}>
@@ -202,10 +201,6 @@ export default function SprintBoard() {
         {[['all','All Issues'],['In Progress','In Progress'],['Todo','Todo'],['Done','Done']].map(([v, l]) => (
           <button key={v} onClick={() => setFilter(v)} className={'budget-tab ' + (filter === v ? 'active' : '')}>{l}</button>
         ))}
-        <a href="https://linear.app/cha-llc" target="_blank" rel="noreferrer"
-          style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--teal)', textDecoration: 'none', alignSelf: 'center', textTransform: 'uppercase', letterSpacing: 1 }}>
-          Open Linear ↗
-        </a>
       </div>
 
       <div className="grid-3">

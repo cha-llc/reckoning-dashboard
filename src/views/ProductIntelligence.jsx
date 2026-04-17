@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, RadarChart, Radar, PolarGrid, PolarAngleAxis } from 'recharts'
+import React, { useState, useEffect, useCallback } from 'react'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { supabase, CAMPAIGN_PRODUCTS, VERCEL_TEAM } from '../supabase.js'
+import PageHeader from '../components/PageHeader.jsx'
+import { useAutoRefresh } from '../hooks/useAutoRefresh.js'
 
 const fmt = v => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
@@ -49,12 +51,13 @@ function GitBadge({ commits }) {
 export default function ProductIntelligence() {
   const [products, setProducts] = useState([])
   const [selected, setSelected] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading]   = useState(true)
+  const [lastSync, setLastSync] = useState(null)
   const [deployments, setDeployments] = useState({})
-  const [commits, setCommits] = useState({})
+  const [commits, setCommits]   = useState({})
 
-  useEffect(() => {
-    async function load() {
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
       // Sessions from Supabase
       const [bpRes, ceRes, flRes, fbRes] = await Promise.all([
         supabase.from('brandpulse_sessions').select('paid, created_at'),
@@ -134,9 +137,12 @@ export default function ProductIntelligence() {
         })
       )
       setDeployments(deplResults)
-    }
-    load()
-  }, [])
+      setLastSync(new Date())
+      if (!silent) setLoading(false)
+    }, [])
+
+  useEffect(() => { load(false) }, [load])
+  useAutoRefresh(load)
 
   const sel = products.find(p => p.name === selected)
   const totalRev = products.reduce((s, p) => s + p.rev, 0)
@@ -151,11 +157,14 @@ export default function ProductIntelligence() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-      <div className="page-header">
-        <div className="page-eyebrow">Reckoning Dashboard</div>
-        <div className="page-title">Product Intelligence</div>
-        <div className="page-sub">Live session data, conversion rates, deployment status, and GitHub activity across all 8 products</div>
-      </div>
+      <PageHeader
+        title="Product Intelligence"
+        sub="Live session data, conversion rates, deployment status, and GitHub activity across all 8 products"
+        loading={loading}
+        lastSync={lastSync}
+        isLive={!!lastSync}
+        onRefresh={() => load(false)}
+      />
 
       {/* Summary KPIs */}
       <div className="kpi-grid">
