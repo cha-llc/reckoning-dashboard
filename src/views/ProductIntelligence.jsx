@@ -59,47 +59,40 @@ export default function ProductIntelligence() {
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
 
-    // Sessions — retry once on error
-    const fetchWithRetry = async (table, fields) => {
-      const { data, error } = await supabase.from(table).select(fields)
-      if (error || !data) {
-        // Wait 1s and retry once
-        await new Promise(r => setTimeout(r, 1000))
-        const retry = await supabase.from(table).select(fields)
-        return retry.data || []
-      }
-      return data
-    }
-
-    const [bpData, ceData, flData, fbData] = await Promise.all([
-      fetchWithRetry('brandpulse_sessions',    'paid, created_at'),
-      fetchWithRetry('clarityengine_sessions',  'paid, created_at'),
-      fetchWithRetry('flagged_sessions',        'paid, created_at'),
-      fetchWithRetry('customer_feedback',       'product, sentiment, message, created_at'),
+    // Fetch all session data directly — no retry wrapper that might swallow errors
+    const [bpRes, ceRes, flRes, fbRes] = await Promise.all([
+      supabase.from('brandpulse_sessions').select('paid, created_at'),
+      supabase.from('clarityengine_sessions').select('paid, created_at'),
+      supabase.from('flagged_sessions').select('paid, created_at'),
+      supabase.from('customer_feedback').select('product, sentiment, message, created_at'),
     ])
+
+    const bpData = bpRes.data || []
+    const ceData = ceRes.data || []
+    const flData = flRes.data || []
+    const fb     = fbRes.data || []
 
     const sessionMap = {
       'BrandPulse':     bpData,
       'Clarity Engine': ceData,
       'Flagged':        flData,
     }
-    const fb = fbData
 
     const prods = CAMPAIGN_PRODUCTS.map(p => {
       const sessions = sessionMap[p.name] || []
-      const paid = sessions.filter(s => s.paid === true).length
+      const paid  = sessions.filter(s => s.paid === true).length
       const total = sessions.length
-      const conv = total > 0 ? Math.round((paid / total) * 100) : (paid > 0 ? 100 : 0)
-      const rev = paid * p.price
-      const pfb = fb.filter(f => f.product === p.name)
+      const conv  = total > 0 ? Math.round((paid / total) * 100) : (paid > 0 ? 100 : 0)
+      const rev   = Math.round(paid * p.price * 100) / 100
+      const pfb   = fb.filter(f => f.product === p.name)
       const daily = Array.from({ length: 7 }, (_, i) => {
         const d = new Date(); d.setDate(d.getDate() - (6 - i))
-        const label = d.toLocaleDateString('en-US', { weekday: 'short' })
+        const label  = d.toLocaleDateString('en-US', { weekday: 'short' })
         const dayRev = sessions.filter(s => s.paid === true && new Date(s.created_at).toDateString() === d.toDateString()).length * p.price
         return { label, rev: Math.round(dayRev * 100) / 100 }
       })
       return {
-        ...p, paid, total: Math.max(total, paid), conv, rev: Math.round(rev * 100) / 100, daily,
+        ...p, paid, total: Math.max(total, paid), conv, rev,  daily,
         fb_pos: pfb.filter(f => f.sentiment === 'positive').length,
         fb_neu: pfb.filter(f => f.sentiment === 'neutral').length,
         fb_neg: pfb.filter(f => f.sentiment === 'negative').length,
@@ -112,7 +105,7 @@ export default function ProductIntelligence() {
     setLastSync(new Date())
     setLoading(false)
 
-    // Vercel + GitHub in background (non-blocking)
+    // Background: Vercel + GitHub (non-blocking, updates after main data shows)
     const ghHeaders = { Authorization: `Bearer ${import.meta.env.VITE_GH_TOKEN || ''}`, Accept: 'application/vnd.github+json' }
     const ghResults = {}
     await Promise.allSettled(
@@ -146,11 +139,14 @@ export default function ProductIntelligence() {
 
   useEffect(() => {
     load(false)
-    // Realtime — reload the moment a new paid session arrives
+    // Realtime — fire on any INSERT or UPDATE to session tables
     const channel = supabase.channel('product-intel-realtime')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'brandpulse_sessions',    filter: 'paid=eq.true' }, () => load(true))
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'clarityengine_sessions', filter: 'paid=eq.true' }, () => load(true))
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'flagged_sessions',       filter: 'paid=eq.true' }, () => load(true))
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'brandpulse_sessions' },    () => load(true))
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'brandpulse_sessions' },    () => load(true))
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'clarityengine_sessions' }, () => load(true))
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'clarityengine_sessions' }, () => load(true))
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'flagged_sessions' },       () => load(true))
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'flagged_sessions' },       () => load(true))
       .subscribe()
     return () => supabase.removeChannel(channel)
   }, [load])
@@ -289,15 +285,15 @@ export default function ProductIntelligence() {
               <div style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 2, marginBottom: 4 }}>Stats</div>
               {[
                 { l: 'Total Sessions', v: sel.total },
-                { l: 'Paid', v: sel.paid, c: '#22c55e' },
-                { l: 'Revenue', v: fmt(sel.rev), c: 'var(--gold)' },
-                { l: 'Conversion', v: `${sel.conv}%`, c: 'var(--teal)' },
-                { l: 'Positive FB', v: sel.fb_pos, c: '#22c55e' },
-                { l: 'Negative FB', v: sel.fb_neg, c: 'var(--crimson)' },
+                { l: 'Paid',           v: sel.paid,        c: '#22c55e' },
+                { l: 'Revenue',        v: fmt(sel.rev),    c: 'var(--gold)' },
+                { l: 'Conversion',     v: `${sel.conv}%`,  c: 'var(--teal)' },
+                { l: 'Positive FB',    v: sel.fb_pos,      c: '#22c55e' },
+                { l: 'Negative FB',    v: sel.fb_neg,      c: 'var(--crimson)' },
               ].map(s => (
                 <div key={s.l} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                   <span style={{ color: 'var(--muted)' }}>{s.l}</span>
-                  <span style={{ fontWeight: 600, color: s.c || 'var(--cream)' }}>{v => v}{s.v}</span>
+                  <span style={{ fontWeight: 600, color: s.c || 'var(--cream)' }}>{s.v}</span>
                 </div>
               ))}
             </div>
