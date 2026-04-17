@@ -156,8 +156,8 @@ export default function ProductIntelligence() {
   const totalRev = products.reduce((s, p) => s + p.rev, 0)
   const totalSales = products.reduce((s, p) => s + p.paid, 0)
 
-  const revenueChart = products.filter(p => p.paid > 0).map(p => ({
-    name: p.name.split(' ').slice(0, 2).join(' '),
+  const revenueChart = products.map(p => ({
+    name: p.name.length > 12 ? p.name.split(' ').slice(0, 2).join(' ') : p.name,
     Revenue: p.rev,
     Sales: p.paid,
   }))
@@ -193,17 +193,21 @@ export default function ProductIntelligence() {
       <div className="grid-2">
         {/* Revenue by product chart */}
         <div className="card">
-          <div className="card-title">Revenue by Product</div>
-          <ResponsiveContainer width="100%" height={180}>
-            <BarChart data={revenueChart} barGap={4}>
-              <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.05)" />
-              <XAxis dataKey="name" tick={{ fill: 'var(--muted)', fontSize: 10 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: 'var(--muted)', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v}`} />
-              <Tooltip contentStyle={{ background: 'var(--navy3)', border: '1px solid var(--border2)', borderRadius: 8, fontSize: 12 }} formatter={(v, n) => [n === 'Revenue' ? fmt(v) : v, n]} />
-              <Bar dataKey="Revenue" radius={[3,3,0,0]} fill="var(--gold)" />
-              <Bar dataKey="Sales" radius={[3,3,0,0]} fill="var(--teal)" />
-            </BarChart>
-          </ResponsiveContainer>
+          <div className="card-title">Revenue by Product <span className="tag">All 8</span></div>
+          {loading ? (
+            <div style={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', fontSize: 12 }}>Loading…</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={revenueChart} barGap={4} barCategoryGap="25%">
+                <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.05)" />
+                <XAxis dataKey="name" tick={{ fill: 'var(--muted)', fontSize: 10 }} axisLine={false} tickLine={false} interval={0} angle={-20} textAnchor="end" height={40} />
+                <YAxis tick={{ fill: 'var(--muted)', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v}`} />
+                <Tooltip contentStyle={{ background: 'var(--navy3)', border: '1px solid var(--border2)', borderRadius: 8, fontSize: 12 }} formatter={(v, n) => [n === 'Revenue' ? fmt(v) : v, n]} />
+                <Bar dataKey="Revenue" radius={[3,3,0,0]} fill="var(--gold)" minPointSize={2} />
+                <Bar dataKey="Sales"   radius={[3,3,0,0]} fill="var(--teal)"  minPointSize={2} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
 
         {/* Full product table */}
