@@ -58,90 +58,102 @@ export default function ProductIntelligence() {
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
-      // Sessions from Supabase
-      const [bpRes, ceRes, flRes, fbRes] = await Promise.all([
-        supabase.from('brandpulse_sessions').select('paid, created_at'),
-        supabase.from('clarityengine_sessions').select('paid, created_at'),
-        supabase.from('flagged_sessions').select('paid, created_at'),
-        supabase.from('customer_feedback').select('product, sentiment, message, created_at'),
-      ])
 
-      const sessionMap = {
-        'BrandPulse':     bpRes.data || [],
-        'Clarity Engine': ceRes.data || [],
-        'Flagged':        flRes.data || [],
+    // Sessions — retry once on error
+    const fetchWithRetry = async (table, fields) => {
+      const { data, error } = await supabase.from(table).select(fields)
+      if (error || !data) {
+        // Wait 1s and retry once
+        await new Promise(r => setTimeout(r, 1000))
+        const retry = await supabase.from(table).select(fields)
+        return retry.data || []
       }
-      const fb = fbRes.data || []
+      return data
+    }
 
-      const prods = CAMPAIGN_PRODUCTS.map(p => {
-        const sessions = sessionMap[p.name] || []
-        const paid = sessions.filter(s => s.paid).length
-        const total = sessions.length
-        const conv = total > 0 ? Math.round((paid / total) * 100) : (paid > 0 ? 100 : 0)
-        const rev = paid * p.price
-        const pfb = fb.filter(f => f.product === p.name)
-        // Daily revenue for last 7 days
-        const daily = Array.from({ length: 7 }, (_, i) => {
-          const d = new Date(); d.setDate(d.getDate() - (6 - i))
-          const label = d.toLocaleDateString('en-US', { weekday: 'short' })
-          const dayRev = sessions.filter(s => s.paid && new Date(s.created_at).toDateString() === d.toDateString()).length * p.price
-          return { label, rev: Math.round(dayRev * 100) / 100 }
-        })
-        return {
-          ...p, paid, total: Math.max(total, paid), conv, rev: Math.round(rev * 100) / 100, daily,
-          fb_pos: pfb.filter(f => f.sentiment === 'positive').length,
-          fb_neu: pfb.filter(f => f.sentiment === 'neutral').length,
-          fb_neg: pfb.filter(f => f.sentiment === 'negative').length,
-          feedback: pfb.slice(-3),
-        }
+    const [bpData, ceData, flData, fbData] = await Promise.all([
+      fetchWithRetry('brandpulse_sessions',    'paid, created_at'),
+      fetchWithRetry('clarityengine_sessions',  'paid, created_at'),
+      fetchWithRetry('flagged_sessions',        'paid, created_at'),
+      fetchWithRetry('customer_feedback',       'product, sentiment, message, created_at'),
+    ])
+
+    const sessionMap = {
+      'BrandPulse':     bpData,
+      'Clarity Engine': ceData,
+      'Flagged':        flData,
+    }
+    const fb = fbData
+
+    const prods = CAMPAIGN_PRODUCTS.map(p => {
+      const sessions = sessionMap[p.name] || []
+      const paid = sessions.filter(s => s.paid === true).length
+      const total = sessions.length
+      const conv = total > 0 ? Math.round((paid / total) * 100) : (paid > 0 ? 100 : 0)
+      const rev = paid * p.price
+      const pfb = fb.filter(f => f.product === p.name)
+      const daily = Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(); d.setDate(d.getDate() - (6 - i))
+        const label = d.toLocaleDateString('en-US', { weekday: 'short' })
+        const dayRev = sessions.filter(s => s.paid === true && new Date(s.created_at).toDateString() === d.toDateString()).length * p.price
+        return { label, rev: Math.round(dayRev * 100) / 100 }
       })
+      return {
+        ...p, paid, total: Math.max(total, paid), conv, rev: Math.round(rev * 100) / 100, daily,
+        fb_pos: pfb.filter(f => f.sentiment === 'positive').length,
+        fb_neu: pfb.filter(f => f.sentiment === 'neutral').length,
+        fb_neg: pfb.filter(f => f.sentiment === 'negative').length,
+        feedback: pfb.slice(-3),
+      }
+    })
 
-      setProducts(prods)
-      setSelected(prods[0]?.name || null)
-      setLoading(false)
+    setProducts(prods)
+    setSelected(prev => prev || prods[0]?.name || null)
+    setLastSync(new Date())
+    setLoading(false)
 
-      // Vercel deployment status via GitHub API commits
-      const ghHeaders = { Authorization: `Bearer ${import.meta.env.VITE_GH_TOKEN || ''}`, Accept: 'application/vnd.github+json' }
-      const ghResults = {}
-      await Promise.allSettled(
-        Object.entries(GITHUB_REPOS).map(async ([name, repo]) => {
-          try {
-            const r = await fetch(`https://api.github.com/repos/cha-llc/${repo}/commits?per_page=1`, { headers: ghHeaders })
-            if (r.ok) {
-              const commits = await fetch(`https://api.github.com/repos/cha-llc/${repo}/commits?per_page=100`, { headers: ghHeaders })
-              if (commits.ok) {
-                const data = await commits.json()
-                ghResults[name] = Array.isArray(data) ? data.length : 0
-              }
-            }
-          } catch {}
-        })
-      )
-      setCommits(ghResults)
+    // Vercel + GitHub in background (non-blocking)
+    const ghHeaders = { Authorization: `Bearer ${import.meta.env.VITE_GH_TOKEN || ''}`, Accept: 'application/vnd.github+json' }
+    const ghResults = {}
+    await Promise.allSettled(
+      Object.entries(GITHUB_REPOS).map(async ([name, repo]) => {
+        try {
+          const r = await fetch(`https://api.github.com/repos/cha-llc/${repo}/commits?per_page=100`, { headers: ghHeaders })
+          if (r.ok) { const data = await r.json(); ghResults[name] = Array.isArray(data) ? data.length : 0 }
+        } catch {}
+      })
+    )
+    setCommits(ghResults)
 
-      // Vercel deployments
-      const deplResults = {}
-      await Promise.allSettled(
-        Object.entries(VERCEL_PROJECTS).map(async ([name, slug]) => {
-          if (!slug) return
-          try {
-            const r = await fetch(`https://api.vercel.com/v6/deployments?app=${slug}&limit=1&teamId=${VERCEL_TEAM}`, {
-              headers: { Authorization: `Bearer ${VERCEL_TOKEN}` }
-            })
-            if (r.ok) {
-              const data = await r.json()
-              const latest = data.deployments?.[0]
-              if (latest) deplResults[name] = { status: latest.state, url: latest.url, ago: latest.createdAt }
-            }
-          } catch {}
-        })
-      )
-      setDeployments(deplResults)
-      setLastSync(new Date())
-      if (!silent) setLoading(false)
-    }, [])
+    const deplResults = {}
+    await Promise.allSettled(
+      Object.entries(VERCEL_PROJECTS).map(async ([name, slug]) => {
+        if (!slug) return
+        try {
+          const r = await fetch(`https://api.vercel.com/v6/deployments?app=${slug}&limit=1&teamId=${VERCEL_TEAM}`, {
+            headers: { Authorization: `Bearer ${VERCEL_TOKEN}` }
+          })
+          if (r.ok) {
+            const data = await r.json()
+            const latest = data.deployments?.[0]
+            if (latest) deplResults[name] = { status: latest.state, url: latest.url, ago: latest.createdAt }
+          }
+        } catch {}
+      })
+    )
+    setDeployments(deplResults)
+  }, [])
 
-  useEffect(() => { load(false) }, [load])
+  useEffect(() => {
+    load(false)
+    // Realtime — reload the moment a new paid session arrives
+    const channel = supabase.channel('product-intel-realtime')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'brandpulse_sessions',    filter: 'paid=eq.true' }, () => load(true))
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'clarityengine_sessions', filter: 'paid=eq.true' }, () => load(true))
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'flagged_sessions',       filter: 'paid=eq.true' }, () => load(true))
+      .subscribe()
+    return () => supabase.removeChannel(channel)
+  }, [load])
   useAutoRefresh(load)
 
   const sel = products.find(p => p.name === selected)

@@ -8,31 +8,46 @@ export function useCommandCenter() {
 
   const fetch = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
+
+    const safe = async (promise) => { const { data, count, error } = await promise; return { data: data || [], count: count || 0, error } }
+
     const [bpRes, ceRes, flRes, subsRes, lmRes, fbRes, milestonesRes, sprintRes, eventsRes] = await Promise.all([
-      supabase.from('brandpulse_sessions').select('id', { count: 'exact', head: true }).eq('paid', true),
-      supabase.from('clarityengine_sessions').select('id', { count: 'exact', head: true }).eq('paid', true),
-      supabase.from('flagged_sessions').select('id', { count: 'exact', head: true }).eq('paid', true),
-      supabase.from('newsletter_subscribers').select('id', { count: 'exact', head: true }),
-      supabase.from('lead_magnet_downloads').select('id', { count: 'exact', head: true }),
-      supabase.from('customer_feedback').select('sentiment'),
-      supabase.from('phase_milestones').select('*').eq('phase', 'phase_1').order('target_date'),
-      supabase.from('sprint_log').select('*').order('sprint_number', { ascending: false }).limit(1),
-      supabase.from('campaign_events').select('*').order('created_at', { ascending: false }).limit(10),
+      safe(supabase.from('brandpulse_sessions').select('id',    { count: 'exact', head: true }).eq('paid', true)),
+      safe(supabase.from('clarityengine_sessions').select('id', { count: 'exact', head: true }).eq('paid', true)),
+      safe(supabase.from('flagged_sessions').select('id',       { count: 'exact', head: true }).eq('paid', true)),
+      safe(supabase.from('newsletter_subscribers').select('id', { count: 'exact', head: true })),
+      safe(supabase.from('lead_magnet_downloads').select('id',  { count: 'exact', head: true })),
+      safe(supabase.from('customer_feedback').select('sentiment')),
+      safe(supabase.from('phase_milestones').select('*').eq('phase', 'phase_1').order('target_date')),
+      safe(supabase.from('sprint_log').select('*').order('sprint_number', { ascending: false }).limit(1)),
+      safe(supabase.from('campaign_events').select('*').order('created_at', { ascending: false }).limit(10)),
     ])
-    const bp = bpRes.count || 0
-    const ce = ceRes.count || 0
-    const fl = flRes.count || 0
-    const totalPaid = bp + ce + fl
-    const totalRevCents = (bp * 4700) + (ce * 3700) + (fl * 499)
-    const fb = fbRes.data || []
+
+    // If any session count failed, retry once
+    let bp = bpRes.count, ce = ceRes.count, fl = flRes.count
+    if (bpRes.error || ceRes.error || flRes.error) {
+      await new Promise(r => setTimeout(r, 1000))
+      const [bp2, ce2, fl2] = await Promise.all([
+        safe(supabase.from('brandpulse_sessions').select('id',    { count: 'exact', head: true }).eq('paid', true)),
+        safe(supabase.from('clarityengine_sessions').select('id', { count: 'exact', head: true }).eq('paid', true)),
+        safe(supabase.from('flagged_sessions').select('id',       { count: 'exact', head: true }).eq('paid', true)),
+      ])
+      if (!bpRes.error) bp = bpRes.count; else bp = bp2.count
+      if (!ceRes.error) ce = ceRes.count; else ce = ce2.count
+      if (!flRes.error) fl = flRes.count; else fl = fl2.count
+    }
+
+    const totalPaid = (bp||0) + (ce||0) + (fl||0)
+    const totalRevCents = ((bp||0) * 4700) + ((ce||0) * 3700) + ((fl||0) * 499)
+    const fbData = fbRes.data || []
     setData({
-      bp, ce, fl, totalPaid,
+      bp: bp||0, ce: ce||0, fl: fl||0, totalPaid,
       totalRev: totalRevCents / 100,
       subscribers: subsRes.count || 0,
       leadMagnets: lmRes.count || 0,
-      fb_pos: fb.filter(f => f.sentiment === 'positive').length,
-      fb_neu: fb.filter(f => f.sentiment === 'neutral').length,
-      fb_neg: fb.filter(f => f.sentiment === 'negative').length,
+      fb_pos: fbData.filter(f => f.sentiment === 'positive').length,
+      fb_neu: fbData.filter(f => f.sentiment === 'neutral').length,
+      fb_neg: fbData.filter(f => f.sentiment === 'negative').length,
       milestones: milestonesRes.data || [],
       sprint: sprintRes.data?.[0] || null,
       events: eventsRes.data || [],
