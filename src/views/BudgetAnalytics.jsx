@@ -7,9 +7,6 @@ import { useAutoRefresh } from '../hooks/useAutoRefresh.js'
 const fmt = v => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const fmtK = v => v >= 1000 ? `$${(v/1000).toFixed(1)}k` : `$${v}`
 
-// Seed data is test data — show empty state until real data exists
-const SEED_DATA_ONLY = true
-
 const DIVISIONS = ['Consulting', 'Tea Time Network', 'Digital Tools', 'Books']
 const DIV_COLORS = { 'Consulting': '#C9A84C', 'Tea Time Network': '#2A9D8F', 'Digital Tools': '#9B5DE5', 'Books': '#C1121F' }
 
@@ -123,10 +120,23 @@ export default function BudgetAnalytics() {
     setLoading(false)
   }, [mode])
 
-  useEffect(() => { load(false) }, [load])
+  useEffect(() => {
+    load(false)
+
+    // Realtime — update instantly when Budget Manager adds/edits entries
+    const channel = supabase.channel('budget-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'revenue' },          () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' },         () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'division_budgets' }, () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'budget_snapshots' }, () => load(true))
+      .subscribe()
+
+    return () => supabase.removeChannel(channel)
+  }, [load])
   useAutoRefresh(load)
 
-  const hasRealData = !SEED_DATA_ONLY && data && (data.revCount > 0 || data.expCount > 0)
+  // Show live data view when actual entries exist in Supabase
+  const hasRealData = data && (data.revCount > 0 || data.expCount > 0)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -156,15 +166,15 @@ export default function BudgetAnalytics() {
       </div>
 
       {!hasRealData ? (
-        /* ── EMPTY STATE ──────────────────────────────────────────────── */
+        /* ── EMPTY STATE — real $0 values from live Supabase query ───── */
         <>
-          {/* KPI strip — all zeros, honest */}
+          {/* KPI strip — live query results, currently all zero */}
           <div className="kpi-grid">
             {[
-              { label: 'Total Revenue',   value: '$0.00', color: 'var(--teal)',   sub: 'No entries yet' },
-              { label: 'Total Expenses',  value: '$0.00', color: 'var(--crimson)', sub: 'No entries yet' },
-              { label: 'Net',             value: '$0.00', color: 'var(--muted)',   sub: '—' },
-              { label: 'This Month Net',  value: '$0.00', color: 'var(--muted)',   sub: '—' },
+              { label: 'Total Revenue',  value: loading ? '...' : fmt(data?.totalRev  || 0), color: 'var(--teal)',    sub: data?.revCount === 0 ? 'No entries yet' : `${data?.revCount} entries` },
+              { label: 'Total Expenses', value: loading ? '...' : fmt(data?.totalExp  || 0), color: 'var(--crimson)', sub: data?.expCount === 0 ? 'No entries yet' : `${data?.expCount} entries` },
+              { label: 'Net',            value: loading ? '...' : fmt(data?.net        || 0), color: 'var(--muted)',   sub: '—' },
+              { label: 'This Month Net', value: loading ? '...' : fmt(data?.thisNet   || 0), color: 'var(--muted)',   sub: '—' },
             ].map(k => (
               <div key={k.label} className="kpi-card" style={{ '--accent': k.color }}>
                 <div className="kpi-label">{k.label}</div>
@@ -180,8 +190,8 @@ export default function BudgetAnalytics() {
             <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--cream)', marginBottom: 8 }}>
               No financial data recorded yet
             </div>
-            <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 24, lineHeight: 1.7, maxWidth: 440, margin: '0 auto 24px' }}>
-              Division budgets are configured. Add your first revenue or expense entry in the Budget Manager to see charts and analytics here.
+            <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.7, maxWidth: 440, margin: '0 auto 24px' }}>
+              Division budgets are configured. Add your first revenue or expense entry in the Budget Manager to see charts and analytics here. This page updates in real time — entries appear instantly.
             </div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
               {[
@@ -194,9 +204,16 @@ export default function BudgetAnalytics() {
                   padding: '8px 16px', borderRadius: 8, fontSize: 12, fontWeight: 500,
                   background: 'rgba(201,168,76,0.12)', color: 'var(--gold)',
                   border: '1px solid rgba(201,168,76,0.3)', textDecoration: 'none',
-                  transition: 'all .15s',
                 }}>{l.label}</a>
               ))}
+            </div>
+            {/* Realtime status */}
+            <div style={{ marginTop: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 11, color: 'var(--muted)' }}>
+              <div style={{ width: 6, height: 6, borderRadius: '50%', background: lastSync ? '#22c55e' : 'var(--muted)', animation: lastSync ? 'pulse 2s infinite' : 'none' }} />
+              {lastSync
+                ? `Realtime connected · watching revenue, expenses, budgets · last check ${lastSync.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`
+                : 'Connecting to Supabase…'
+              }
             </div>
           </div>
 
