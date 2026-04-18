@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import ChaNav from './ChaNav.jsx'
 
 export default function Topbar() {
   const [time, setTime] = useState(new Date())
@@ -11,19 +12,23 @@ export default function Topbar() {
   const timeStr = time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
 
   return (
-    <header className="topbar">
+    <header className="topbar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
       <div className="topbar-brand">
         <div>
           <div className="topbar-logo">The Reckoning Dashboard</div>
           <div className="topbar-sub">C.H.A. LLC · Free Era Blueprint Reckoning</div>
         </div>
       </div>
-      <div className="topbar-right">
-        <div className="live-badge">
-          <div className="live-dot" />
-          Realtime
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <ChaNav current="reckoning" />
+        <div className="topbar-right" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div className="live-badge">
+            <div className="live-dot" />
+            Realtime
+          </div>
+          <div className="topbar-time">{dateStr} · {timeStr}</div>
         </div>
-        <div className="topbar-time">{dateStr} · {timeStr}</div>
       </div>
     </header>
   )
